@@ -11,12 +11,10 @@ fi
 
 mkdir -p "$dest_dir"
 
-shopt -s nullglob dotglob
-
-for src in "$src_dir"/*; do
-  [ -f "$src" ] || continue
-  name="$(basename "$src")"
-  dest="$dest_dir/$name"
+while IFS= read -r -d '' src; do
+  relative_path="${src#"$src_dir"/}"
+  dest="$dest_dir/$relative_path"
+  mkdir -p "$(dirname "$dest")"
 
   if [ -e "$dest" ] || [ -L "$dest" ]; then
     if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$src" ]; then
@@ -34,4 +32,4 @@ for src in "$src_dir"/*; do
 
   ln -s "$src" "$dest"
   echo "Linked: $dest -> $src"
-done
+done < <(find "$src_dir" -type f -print0)
