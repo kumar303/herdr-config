@@ -33,3 +33,6 @@ while IFS= read -r -d '' src; do
   ln -s "$src" "$dest"
   echo "Linked: $dest -> $src"
 done < <(find "$src_dir" -type f -print0)
+
+echo "Reloading Herdr configuration"
+herdr server reload-config
