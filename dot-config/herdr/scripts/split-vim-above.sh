@@ -56,7 +56,7 @@ cleanup() {
 }
 trap cleanup ERR
 
-herdr pane swap --pane "$new_pane" --direction up
+herdr pane swap --pane "$new_pane" --direction up >/dev/null
 herdr pane run "$new_pane" vim "$cwd"
 
 trap - ERR
