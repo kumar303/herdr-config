@@ -12,7 +12,7 @@ Required: Node.js, Vim, and Ghostty.
    npx skills add ogulcancelik/herdr
    ```
 
-2. Link the configuration files and reload Herdr:
+2. Link the configuration files and plugin, then reload Herdr:
 
    ```sh
    ./setup.sh
@@ -32,13 +32,13 @@ The setup script links the tracked
 
 ## Vim pane toggle
 
-[`split-vim-above.js`](dot-config/herdr/scripts/split-vim-above.js) keeps one
+The local [`split-vim-above`](plugins/split-vim-above) plugin keeps one
 Vim pane per working directory and workspace. It parks the running pane in an
 inactive Herdr tab, then moves the same pane above the focused pane when
 reopened. The pane takes 80% of the split and leaves unrelated Vim panes alone.
 
-Session metadata lives in `~/.cache/herdr-config-kumar303` so the shortcut can
-identify its parked panes without touching unrelated Vim panes.
+Session metadata lives in Herdr's isolated `HERDR_PLUGIN_STATE_DIR`. The plugin
+owns its JSON records and locks; Herdr owns the state directory location.
 
 ## Development
 

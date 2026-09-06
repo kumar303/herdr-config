@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const scriptPath = join(repositoryRoot, "dot-config", "herdr", "scripts", "split-vim-above.js");
+const scriptPath = join(repositoryRoot, "plugins", "split-vim-above", "split-vim-above.js");
 const mockHerdrPath = join(repositoryRoot, "tests", "fixtures", "mock-herdr.js");
 
 /** @typedef {Record<string, unknown>} Pane */
@@ -254,9 +254,10 @@ function runScript(options = {}) {
     encoding: "utf8",
     env: {
       ...process.env,
-      HERDR_ACTIVE_PANE_ID: options.paneId || "w1:p1",
-      HERDR_COMMAND: mockHerdrPath,
-      HERDR_CONFIG_CACHE_DIR: cacheDirectory,
+      HERDR_BIN_PATH: mockHerdrPath,
+      HERDR_COMMAND: "/invalid/herdr-command",
+      HERDR_PANE_ID: options.paneId || "w1:p1",
+      HERDR_PLUGIN_STATE_DIR: cacheDirectory,
       HERDR_MOCK_COUNTER: counterPath,
       HERDR_MOCK_LOG: herdrLogPath,
       HERDR_MOCK_PANES: panesPath,

@@ -13,7 +13,6 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 /**
@@ -39,11 +38,10 @@ import { join } from "node:path";
  * @property {string} terminal_id
  */
 
-const herdrCommand = process.env.HERDR_COMMAND || "herdr";
-const cacheDirectory =
-  process.env.HERDR_CONFIG_CACHE_DIR || join(homedir(), ".cache", "herdr-config-kumar303");
-const paneMarkerDirectory = join(cacheDirectory, "pane-markers");
-const vimSessionDirectory = join(cacheDirectory, "vim-sessions");
+const herdrCommand = process.env.HERDR_BIN_PATH || "herdr";
+const pluginStateDirectory = process.env.HERDR_PLUGIN_STATE_DIR || "";
+const paneMarkerDirectory = join(pluginStateDirectory, "pane-markers");
+const vimSessionDirectory = join(pluginStateDirectory, "vim-sessions");
 
 /**
  * @param {string[]} args
@@ -286,24 +284,10 @@ function findSessionStateForPane(panes, markedPane) {
   return null;
 }
 
-function stopLegacyReaper() {
-  const lockDirectory = join(cacheDirectory, "vim-reaper.lock");
-  const pidFile = join(lockDirectory, "pid");
-  if (!existsSync(pidFile)) return;
-
-  const pid = Number.parseInt(readFileSync(pidFile, "utf8"), 10);
-  if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch {
-      // The old reaper already exited.
-    }
-  }
-  rmSync(lockDirectory, { recursive: true, force: true });
-}
-
 function main() {
-  stopLegacyReaper();
+  if (!pluginStateDirectory) {
+    throw new Error("HERDR_PLUGIN_STATE_DIR is not set");
+  }
   const paneList = runHerdr(/** @type {string[]} */ (["pane", "list"]));
   const panes = /** @type {PaneListResponse} */ (paneList).result.panes;
   const sourcePane = findSourcePane(panes);
@@ -315,7 +299,7 @@ function main() {
   mkdirSync(paneMarkerDirectory, { recursive: true });
   mkdirSync(vimSessionDirectory, { recursive: true });
   try {
-    chmodSync(cacheDirectory, 0o700);
+    chmodSync(pluginStateDirectory, 0o700);
   } catch {
     // A restrictive mode is best effort on filesystems without POSIX modes.
   }

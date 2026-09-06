@@ -39,10 +39,21 @@ while IFS= read -r -d '' src; do
   link_file "$src" "$herdr_dest_dir/$relative_path"
 done < <(find "$herdr_src_dir" -type f -print0)
 
+legacy_script="$herdr_dest_dir/scripts/split-vim-above.js"
+legacy_target="$repo_dir/dot-config/herdr/scripts/split-vim-above.js"
+if [ -L "$legacy_script" ] && [ "$(readlink "$legacy_script")" = "$legacy_target" ]; then
+  rm "$legacy_script"
+  rmdir "$(dirname "$legacy_script")" 2>/dev/null || true
+  echo "Removed legacy link: $legacy_script"
+fi
+
 ghostty_src="$repo_dir/dot-config/ghostty/config.ghostty"
 ghostty_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 ghostty_dest="$ghostty_config_home/ghostty/config.ghostty"
 link_file "$ghostty_src" "$ghostty_dest"
+
+echo "Linking split-vim-above Herdr plugin"
+herdr plugin link "$repo_dir/plugins/split-vim-above" --enabled
 
 echo "Reloading Herdr configuration"
 herdr server reload-config
