@@ -10,6 +10,6 @@ delivery = "system"
 show_agent_labels_on_pane_borders = true
 
 [[keys.command]]
-key = "prefix+shift+e"
+key = "ctrl+backtick"
 type = "shell"
 command = "~/.config/herdr/scripts/split-vim-above.js"
