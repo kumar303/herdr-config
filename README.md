@@ -1,3 +1,9 @@
+# 🔥
+
+Whoops, I almost forgot I have a [dotfiles](https://github.com/kumar303/dotfiles) repo. I'm moving everything there.
+
+<hr />
+
 # Herdr Config
 
 Personal configuration for [Herdr](https://github.com/ogulcancelik/herdr).
