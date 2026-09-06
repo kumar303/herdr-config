@@ -4,7 +4,7 @@ Personal configuration for [Herdr](https://github.com/ogulcancelik/herdr).
 
 ## Setup
 
-The Vim pane toggle requires Node.js and `tmux`.
+Required: Node.js, `tmux`, Vim, and Ghostty.
 
 1. Install the Herdr skill:
 
