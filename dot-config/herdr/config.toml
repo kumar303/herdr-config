@@ -19,3 +19,8 @@ command = "~/.config/herdr/scripts/split-vim-above.js"
 key = "prefix+shift+e"
 type = "shell"
 command = "~/.config/herdr/scripts/split-vim-above.js"
+
+[[keys.command]]
+key = "cmd+alt+backtick"
+type = "shell"
+command = "herdr tab create --workspace \"$HERDR_ACTIVE_WORKSPACE_ID\" --cwd \"$HERDR_ACTIVE_PANE_CWD\" --focus"
