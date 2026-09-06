@@ -4,6 +4,8 @@ Personal configuration for [Herdr](https://github.com/ogulcancelik/herdr).
 
 ## Setup
 
+The Vim pane toggle requires Node.js and `tmux`.
+
 1. Install the Herdr skill:
 
    ```sh
@@ -31,9 +33,12 @@ The setup script links the tracked
 ## Vim pane toggle
 
 [`split-vim-above.js`](dot-config/herdr/scripts/split-vim-above.js) toggles a
-dedicated Vim pane above the focused pane. It uses the same working directory,
-takes 80% of the split, tracks one pane per tab, and leaves unrelated Vim panes
-alone.
+dedicated Vim pane above the focused pane. It uses `tmux` to keep one Vim
+process per working directory and reconnects to that process when reopened.
+The pane takes 80% of the split and leaves unrelated Vim panes alone.
+
+Session metadata lives in `~/.cache/herdr-config-kumar303`. A background reaper
+stops sessions that the shortcut has not opened for over two hours.
 
 ## Development
 

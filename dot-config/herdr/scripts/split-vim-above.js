@@ -1,23 +1,26 @@
 #!/usr/bin/env node
 // @ts-check
 
-import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * @typedef {object} Pane
  * @property {string} pane_id
- * @property {string} terminal_id
+ * @property {string} [terminal_id]
  * @property {string} cwd
  * @property {string} tab_id
  * @property {string} workspace_id
@@ -27,8 +30,37 @@ import { join } from "node:path";
 /** @typedef {{result: {panes: Pane[]}}} PaneListResponse */
 /** @typedef {{result: {pane: Pane}}} PaneResponse */
 /** @typedef {{pane_id: string, terminal_id: string}} PaneMarker */
+/** @typedef {{cwd: string, session_name: string, last_opened_at: number}} VimSession */
 
 const herdrCommand = process.env.HERDR_COMMAND || "herdr";
+const tmuxCommand = process.env.TMUX_COMMAND || "tmux";
+const tmuxSocketName = "herdr-config-kumar303";
+const sessionLifetimeMs = 2 * 60 * 60 * 1_000;
+const cacheDirectory =
+  process.env.HERDR_CONFIG_CACHE_DIR || join(homedir(), ".cache", "herdr-config-kumar303");
+const paneMarkerDirectory = join(cacheDirectory, "pane-markers");
+const vimSessionDirectory = join(cacheDirectory, "vim-sessions");
+
+/**
+ * @param {string} command
+ * @param {string[]} args
+ * @param {{allowFailure?: boolean}} [options]
+ */
+function runProcess(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    env: process.env,
+  });
+
+  if (result.error) {
+    throw new Error(`could not run ${command}: ${result.error.message}`);
+  }
+  if (result.status !== 0 && !options.allowFailure) {
+    const detail = result.stderr.trim();
+    throw new Error(`${command} ${args.join(" ")} failed${detail ? `: ${detail}` : ""}`);
+  }
+  return result;
+}
 
 /**
  * @template T
@@ -37,19 +69,8 @@ const herdrCommand = process.env.HERDR_COMMAND || "herdr";
  * @returns {T | null}
  */
 function runHerdr(args, options = {}) {
-  const result = spawnSync(herdrCommand, args, {
-    encoding: "utf8",
-    env: process.env,
-  });
-
-  if (result.error) {
-    throw new Error(`could not run ${herdrCommand}: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    if (options.allowFailure) return null;
-    const detail = result.stderr.trim();
-    throw new Error(`herdr ${args.join(" ")} failed${detail ? `: ${detail}` : ""}`);
-  }
+  const result = runProcess(herdrCommand, args, options);
+  if (result.status !== 0) return null;
 
   const output = result.stdout.trim();
   if (!output) return /** @type {T} */ ({});
@@ -59,6 +80,24 @@ function runHerdr(args, options = {}) {
   } catch {
     throw new Error(`herdr ${args.join(" ")} returned invalid JSON`);
   }
+}
+
+/**
+ * @param {string[]} args
+ * @param {{allowFailure?: boolean}} [options]
+ */
+function runTmux(args, options = {}) {
+  return runProcess(tmuxCommand, ["-L", tmuxSocketName, ...args], options);
+}
+
+/** @param {string} sessionName */
+function tmuxSessionExists(sessionName) {
+  return runTmux(["has-session", "-t", sessionName], { allowFailure: true }).status === 0;
+}
+
+/** @returns {number} */
+function now() {
+  return process.env.HERDR_NOW_MS ? Number(process.env.HERDR_NOW_MS) : Date.now();
 }
 
 /**
@@ -88,21 +127,27 @@ function findSourcePane(panes) {
 }
 
 /**
- * @param {string} stateFile
- * @returns {PaneMarker | null}
+ * @template T
+ * @param {string} path
+ * @returns {T | null}
  */
-function readMarker(stateFile) {
-  if (!existsSync(stateFile)) return null;
-
+function readJson(path) {
+  if (!existsSync(path)) return null;
   try {
-    const value = /** @type {Partial<PaneMarker>} */ (JSON.parse(readFileSync(stateFile, "utf8")));
-    if (value.pane_id && value.terminal_id) {
-      return /** @type {PaneMarker} */ (value);
-    }
+    return /** @type {T} */ (JSON.parse(readFileSync(path, "utf8")));
   } catch {
-    // The caller removes invalid and stale state.
+    return null;
   }
-  return null;
+}
+
+/**
+ * @param {string} path
+ * @param {unknown} value
+ */
+function writeJsonAtomically(path, value) {
+  const temporaryPath = `${path}.${process.pid}`;
+  writeFileSync(temporaryPath, `${JSON.stringify(value)}\n`, { mode: 0o600 });
+  renameSync(temporaryPath, path);
 }
 
 /**
@@ -128,6 +173,116 @@ function acquireLock(lockDirectory) {
   return true;
 }
 
+/** @param {string} cwd */
+function vimSessionIdentity(cwd) {
+  const id = createHash("sha256").update(cwd).digest("hex").slice(0, 16);
+  return {
+    id,
+    sessionName: `herdr-vim-${id}`,
+    stateFile: join(vimSessionDirectory, `${id}.json`),
+  };
+}
+
+/**
+ * Return the persistent tmux session for a directory, replacing it after two
+ * hours without an open request from this script.
+ *
+ * @param {string} cwd
+ */
+function openVimSession(cwd) {
+  mkdirSync(vimSessionDirectory, { recursive: true });
+  const identity = vimSessionIdentity(cwd);
+  const lockDirectory = `${identity.stateFile}.lock`;
+  if (!acquireLock(lockDirectory)) {
+    if (tmuxSessionExists(identity.sessionName)) return identity.sessionName;
+    throw new Error(`Vim session is already being started for ${cwd}`);
+  }
+
+  try {
+    const state = readJson(identity.stateFile);
+    const session = /** @type {Partial<VimSession> | null} */ (state);
+    const isFresh =
+      session?.cwd === cwd &&
+      session.session_name === identity.sessionName &&
+      typeof session.last_opened_at === "number" &&
+      now() - session.last_opened_at <= sessionLifetimeMs;
+    const exists = tmuxSessionExists(identity.sessionName);
+
+    if (!isFresh || !exists) {
+      if (exists) {
+        runTmux(["kill-session", "-t", identity.sessionName]);
+      }
+      runTmux(["new-session", "-d", "-s", identity.sessionName, "-c", cwd, 'exec vim "$PWD"']);
+    }
+
+    writeJsonAtomically(identity.stateFile, {
+      cwd,
+      session_name: identity.sessionName,
+      last_opened_at: now(),
+    });
+    return identity.sessionName;
+  } finally {
+    rmSync(lockDirectory, { recursive: true, force: true });
+  }
+}
+
+function startReaper() {
+  if (process.env.HERDR_DISABLE_REAPER) return;
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--reap"], {
+    detached: true,
+    env: process.env,
+    stdio: "ignore",
+  });
+  child.on("error", () => {});
+  child.unref();
+}
+
+function reapExpiredSessions() {
+  mkdirSync(vimSessionDirectory, { recursive: true });
+  let activeSessions = 0;
+
+  for (const entry of readdirSync(vimSessionDirectory)) {
+    if (!entry.endsWith(".json")) continue;
+    const stateFile = join(vimSessionDirectory, entry);
+    const state = /** @type {Partial<VimSession> | null} */ (readJson(stateFile));
+    if (
+      !state?.session_name ||
+      !state.cwd ||
+      typeof state.last_opened_at !== "number" ||
+      !tmuxSessionExists(state.session_name)
+    ) {
+      rmSync(stateFile, { force: true });
+      continue;
+    }
+
+    if (now() - state.last_opened_at > sessionLifetimeMs) {
+      runTmux(["kill-session", "-t", state.session_name], { allowFailure: true });
+      rmSync(stateFile, { force: true });
+      continue;
+    }
+    activeSessions += 1;
+  }
+
+  return activeSessions;
+}
+
+function runReaper() {
+  mkdirSync(cacheDirectory, { recursive: true });
+  const lockDirectory = join(cacheDirectory, "vim-reaper.lock");
+  if (!acquireLock(lockDirectory)) return;
+
+  try {
+    do {
+      const activeSessions = reapExpiredSessions();
+      if (process.env.HERDR_REAPER_RUN_ONCE || activeSessions === 0) return;
+      const interval = Number(process.env.HERDR_REAPER_INTERVAL_MS || 60_000);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, interval);
+    } while (true);
+  } finally {
+    rmSync(lockDirectory, { recursive: true, force: true });
+  }
+}
+
 function main() {
   const paneList = runHerdr(/** @type {string[]} */ (["pane", "list"]));
   const panes = /** @type {PaneListResponse} */ (paneList).result.panes;
@@ -137,27 +292,20 @@ function main() {
     throw new Error("could not determine the focused pane, tab, and cwd");
   }
 
-  const stateRoot =
-    process.env.HERDR_VIM_TOGGLE_STATE_DIR ||
-    join(
-      process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"),
-      "herdr-config",
-      "vim-pane-toggle",
-    );
-  mkdirSync(stateRoot, { recursive: true });
+  mkdirSync(paneMarkerDirectory, { recursive: true });
   try {
-    chmodSync(stateRoot, 0o700);
+    chmodSync(cacheDirectory, 0o700);
   } catch {
     // A restrictive mode is best effort on filesystems without POSIX modes.
   }
 
   const scope = `${encodeURIComponent(sourcePane.workspace_id)}__${encodeURIComponent(sourcePane.tab_id)}`;
-  const stateFile = join(stateRoot, `${scope}.json`);
+  const stateFile = join(paneMarkerDirectory, `${scope}.json`);
   const lockDirectory = `${stateFile}.lock`;
   if (!acquireLock(lockDirectory)) return;
 
   try {
-    const marker = readMarker(stateFile);
+    const marker = /** @type {Partial<PaneMarker> | null} */ (readJson(stateFile));
     const markedPane = marker
       ? panes.find(
           (pane) =>
@@ -174,6 +322,9 @@ function main() {
       return;
     }
     rmSync(stateFile, { force: true });
+
+    const vimSessionName = openVimSession(sourcePane.cwd);
+    startReaper();
 
     /** @type {string | undefined} */
     let newPaneId;
@@ -199,7 +350,20 @@ function main() {
       if (!newPaneId) throw new Error("split did not return a new pane ID");
 
       runHerdr(["pane", "swap", "--pane", newPaneId, "--direction", "up"]);
-      runHerdr(["pane", "run", newPaneId, "vim", sourcePane.cwd]);
+      runHerdr([
+        "pane",
+        "run",
+        newPaneId,
+        "env",
+        "-u",
+        "TMUX",
+        tmuxCommand,
+        "-L",
+        tmuxSocketName,
+        "attach-session",
+        "-t",
+        vimSessionName,
+      ]);
 
       let terminalId = split.result.pane.terminal_id;
       if (!terminalId) {
@@ -210,13 +374,10 @@ function main() {
         throw new Error("could not determine the new pane terminal ID");
       }
 
-      const temporaryStateFile = `${stateFile}.${process.pid}`;
-      writeFileSync(
-        temporaryStateFile,
-        `${JSON.stringify({ pane_id: newPaneId, terminal_id: terminalId })}\n`,
-        { mode: 0o600 },
-      );
-      renameSync(temporaryStateFile, stateFile);
+      writeJsonAtomically(stateFile, {
+        pane_id: newPaneId,
+        terminal_id: terminalId,
+      });
       newPaneId = undefined;
     } finally {
       if (newPaneId) {
@@ -233,7 +394,11 @@ function main() {
 }
 
 try {
-  main();
+  if (process.argv[2] === "--reap") {
+    runReaper();
+  } else {
+    main();
+  }
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`split-vim-above: ${message}`);
