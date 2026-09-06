@@ -4,7 +4,7 @@ Personal configuration for [Herdr](https://github.com/ogulcancelik/herdr).
 
 ## Setup
 
-Required: Node.js, `tmux`, Vim, and Ghostty.
+Required: Node.js, Vim, and Ghostty.
 
 1. Install the Herdr skill:
 
@@ -32,13 +32,13 @@ The setup script links the tracked
 
 ## Vim pane toggle
 
-[`split-vim-above.js`](dot-config/herdr/scripts/split-vim-above.js) toggles a
-dedicated Vim pane above the focused pane. It uses `tmux` to keep one Vim
-process per working directory and reconnects to that process when reopened.
-The pane takes 80% of the split and leaves unrelated Vim panes alone.
+[`split-vim-above.js`](dot-config/herdr/scripts/split-vim-above.js) keeps one
+Vim pane per working directory and workspace. It parks the running pane in an
+inactive Herdr tab, then moves the same pane above the focused pane when
+reopened. The pane takes 80% of the split and leaves unrelated Vim panes alone.
 
 Session metadata lives in `~/.cache/herdr-config-kumar303`. A background reaper
-stops sessions that the shortcut has not opened for over two hours.
+closes parked panes that the shortcut has not opened for over two hours.
 
 ## Development
 
