@@ -1,5 +1,8 @@
 onboarding = false
 
+[keys]
+next_tab = "ctrl+cmd+backtick"
+
 [ui.toast]
 delivery = "system"
 
