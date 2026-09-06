@@ -22,6 +22,10 @@ remain untouched.
 
 [View the Herdr configuration](dot-config/herdr/config.toml).
 
+The tracked [Ghostty configuration](dot-config/ghostty/config.ghostty) maps
+`Option+Backspace` to `Control+W`. Ghostty must translate this key before it
+reaches Herdr because the default terminal sequence drops the Option modifier.
+
 ## Vim pane toggle
 
 [`split-vim-above.js`](dot-config/herdr/scripts/split-vim-above.js) toggles a

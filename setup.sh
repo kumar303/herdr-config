@@ -1,38 +1,51 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-src_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/dot-config/herdr"
-dest_dir="$HOME/.config/herdr"
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+herdr_src_dir="$repo_dir/dot-config/herdr"
+herdr_dest_dir="$HOME/.config/herdr"
 
-if [ ! -d "$src_dir" ]; then
-  echo "Source directory not found: $src_dir" >&2
+if [ ! -d "$herdr_src_dir" ]; then
+  echo "Source directory not found: $herdr_src_dir" >&2
   exit 1
 fi
 
-mkdir -p "$dest_dir"
+link_file() {
+  local src="$1"
+  local dest="$2"
 
-while IFS= read -r -d '' src; do
-  relative_path="${src#"$src_dir"/}"
-  dest="$dest_dir/$relative_path"
   mkdir -p "$(dirname "$dest")"
 
   if [ -e "$dest" ] || [ -L "$dest" ]; then
     if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$src" ]; then
       echo "Already linked: $dest"
-      continue
+      return
     fi
     echo "Replace $dest with a symlink to $src"
     read -r -p "Overwrite $dest? [y/N] " answer
     case "$answer" in
       y|Y) ;;
-      *) echo "Skipped: $dest"; continue ;;
+      *) echo "Skipped: $dest"; return ;;
     esac
     rm -rf "$dest"
   fi
 
   ln -s "$src" "$dest"
   echo "Linked: $dest -> $src"
-done < <(find "$src_dir" -type f -print0)
+}
+
+while IFS= read -r -d '' src; do
+  relative_path="${src#"$herdr_src_dir"/}"
+  link_file "$src" "$herdr_dest_dir/$relative_path"
+done < <(find "$herdr_src_dir" -type f -print0)
+
+ghostty_src="$repo_dir/dot-config/ghostty/config.ghostty"
+if [ "$(uname -s)" = "Darwin" ]; then
+  ghostty_dest="$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
+else
+  ghostty_dest="$HOME/.config/ghostty/config"
+fi
+link_file "$ghostty_src" "$ghostty_dest"
 
 echo "Reloading Herdr configuration"
 herdr server reload-config
