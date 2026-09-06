@@ -40,11 +40,8 @@ while IFS= read -r -d '' src; do
 done < <(find "$herdr_src_dir" -type f -print0)
 
 ghostty_src="$repo_dir/dot-config/ghostty/config.ghostty"
-if [ "$(uname -s)" = "Darwin" ]; then
-  ghostty_dest="$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
-else
-  ghostty_dest="$HOME/.config/ghostty/config"
-fi
+ghostty_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+ghostty_dest="$ghostty_config_home/ghostty/config.ghostty"
 link_file "$ghostty_src" "$ghostty_dest"
 
 echo "Reloading Herdr configuration"

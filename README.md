@@ -22,9 +22,11 @@ remain untouched.
 
 [View the Herdr configuration](dot-config/herdr/config.toml).
 
-The tracked [Ghostty configuration](dot-config/ghostty/config.ghostty) maps
-`Option+Backspace` to `Control+W`. Ghostty must translate this key before it
-reaches Herdr because the default terminal sequence drops the Option modifier.
+The setup script links the tracked
+[Ghostty configuration](dot-config/ghostty/config.ghostty) to
+`$XDG_CONFIG_HOME/ghostty/config.ghostty`, or
+`~/.config/ghostty/config.ghostty` when `XDG_CONFIG_HOME` is unset. It maps
+`Option+Backspace` to `Control+W` before the key reaches Herdr.
 
 ## Vim pane toggle
 
