@@ -1,6 +1,7 @@
 onboarding = false
 
 [keys]
+close_tab = "cmd+shift+k"
 next_tab = "ctrl+cmd+backtick"
 
 [ui.toast]
