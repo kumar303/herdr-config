@@ -22,6 +22,13 @@ remain untouched.
 
 [View the Herdr configuration](dot-config/herdr/config.toml).
 
+## Vim pane toggle
+
+[`split-vim-above.js`](dot-config/herdr/scripts/split-vim-above.js) toggles a
+dedicated Vim pane above the focused pane. It uses the same working directory,
+takes 80% of the split, tracks one pane per tab, and leaves unrelated Vim panes
+alone.
+
 ## Development
 
 ```sh
