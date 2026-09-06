@@ -52,6 +52,8 @@ describe("split-vim-above", () => {
       "w1:p1",
       "--direction",
       "down",
+      "--ratio",
+      "0.8",
       "--cwd",
       "/tmp/a dir",
       "--env",

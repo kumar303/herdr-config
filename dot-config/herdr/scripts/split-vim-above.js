@@ -186,6 +186,8 @@ function main() {
           sourcePane.pane_id,
           "--direction",
           "down",
+          "--ratio",
+          "0.8",
           "--cwd",
           sourcePane.cwd,
           "--env",
