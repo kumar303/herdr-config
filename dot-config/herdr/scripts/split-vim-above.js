@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @ts-check
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -15,7 +15,6 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 /**
  * @typedef {object} Pane
@@ -38,12 +37,9 @@ import { fileURLToPath } from "node:url";
  * @property {string} workspace_id
  * @property {string} pane_id
  * @property {string} terminal_id
- * @property {number} last_opened_at
- * @property {boolean} parked
  */
 
 const herdrCommand = process.env.HERDR_COMMAND || "herdr";
-const sessionLifetimeMs = 2 * 60 * 60 * 1_000;
 const cacheDirectory =
   process.env.HERDR_CONFIG_CACHE_DIR || join(homedir(), ".cache", "herdr-config-kumar303");
 const paneMarkerDirectory = join(cacheDirectory, "pane-markers");
@@ -87,11 +83,6 @@ function runHerdr(args, options = {}) {
   } catch {
     throw new Error(`herdr ${args.join(" ")} returned invalid JSON`);
   }
-}
-
-/** @returns {number} */
-function now() {
-  return process.env.HERDR_NOW_MS ? Number(process.env.HERDR_NOW_MS) : Date.now();
 }
 
 /**
@@ -183,14 +174,7 @@ function vimSessionIdentity(workspaceId, cwd) {
  * @returns {session is VimSession}
  */
 function validVimSession(session) {
-  return Boolean(
-    session?.cwd &&
-    session.workspace_id &&
-    session.pane_id &&
-    session.terminal_id &&
-    typeof session.last_opened_at === "number" &&
-    typeof session.parked === "boolean",
-  );
+  return Boolean(session?.cwd && session.workspace_id && session.pane_id && session.terminal_id);
 }
 
 /**
@@ -284,66 +268,6 @@ function createVimPane(sourcePane) {
   }
 }
 
-function startReaper() {
-  if (process.env.HERDR_DISABLE_REAPER) return;
-  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--reap"], {
-    detached: true,
-    env: process.env,
-    stdio: "ignore",
-  });
-  child.on("error", () => {});
-  child.unref();
-}
-
-function reapExpiredSessions() {
-  mkdirSync(vimSessionDirectory, { recursive: true });
-  const paneList = runHerdr(/** @type {string[]} */ (["pane", "list"]));
-  const panes = /** @type {PaneListResponse} */ (paneList).result.panes;
-  let activeSessions = 0;
-
-  for (const entry of readdirSync(vimSessionDirectory)) {
-    if (!entry.endsWith(".json")) continue;
-    const stateFile = join(vimSessionDirectory, entry);
-    const state = /** @type {Partial<VimSession> | null} */ (readJson(stateFile));
-    if (!validVimSession(state)) {
-      rmSync(stateFile, { force: true });
-      continue;
-    }
-
-    const pane = findSessionPane(panes, /** @type {Partial<VimSession>} */ (state));
-    if (!pane) {
-      rmSync(stateFile, { force: true });
-      continue;
-    }
-
-    if (state.parked && now() - state.last_opened_at > sessionLifetimeMs) {
-      runHerdr(["pane", "close", pane.pane_id], { allowFailure: true });
-      rmSync(stateFile, { force: true });
-      continue;
-    }
-    activeSessions += 1;
-  }
-
-  return activeSessions;
-}
-
-function runReaper() {
-  mkdirSync(cacheDirectory, { recursive: true });
-  const lockDirectory = join(cacheDirectory, "vim-reaper.lock");
-  if (!acquireLock(lockDirectory)) return;
-
-  try {
-    do {
-      const activeSessions = reapExpiredSessions();
-      if (process.env.HERDR_REAPER_RUN_ONCE || activeSessions === 0) return;
-      const interval = Number(process.env.HERDR_REAPER_INTERVAL_MS || 60_000);
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, interval);
-    } while (true);
-  } finally {
-    rmSync(lockDirectory, { recursive: true, force: true });
-  }
-}
-
 /**
  * @param {Pane[]} panes
  * @param {Pane} markedPane
@@ -362,7 +286,24 @@ function findSessionStateForPane(panes, markedPane) {
   return null;
 }
 
+function stopLegacyReaper() {
+  const lockDirectory = join(cacheDirectory, "vim-reaper.lock");
+  const pidFile = join(lockDirectory, "pid");
+  if (!existsSync(pidFile)) return;
+
+  const pid = Number.parseInt(readFileSync(pidFile, "utf8"), 10);
+  if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // The old reaper already exited.
+    }
+  }
+  rmSync(lockDirectory, { recursive: true, force: true });
+}
+
 function main() {
+  stopLegacyReaper();
   const paneList = runHerdr(/** @type {string[]} */ (["pane", "list"]));
   const panes = /** @type {PaneListResponse} */ (paneList).result.panes;
   const sourcePane = findSourcePane(panes);
@@ -407,11 +348,8 @@ function main() {
         workspace_id: sourcePane.workspace_id,
         pane_id: parkedPane.pane_id,
         terminal_id: requireTerminalId(parkedPane),
-        last_opened_at: sessionRecord?.state.last_opened_at || now(),
-        parked: true,
       });
       rmSync(paneMarkerFile, { force: true });
-      startReaper();
       return;
     }
     rmSync(paneMarkerFile, { force: true });
@@ -425,13 +363,6 @@ function main() {
       let vimPane = validVimSession(state)
         ? findSessionPane(panes, /** @type {Partial<VimSession>} */ (state))
         : undefined;
-      const expired =
-        validVimSession(state) && now() - Number(state.last_opened_at) > sessionLifetimeMs;
-
-      if (vimPane && expired) {
-        runHerdr(["pane", "close", vimPane.pane_id]);
-        vimPane = undefined;
-      }
       if (!vimPane) {
         rmSync(identity.stateFile, { force: true });
         vimPane = createVimPane(sourcePane);
@@ -452,14 +383,11 @@ function main() {
         workspace_id: sourcePane.workspace_id,
         pane_id: movedPane.pane_id,
         terminal_id: requireTerminalId(movedPane),
-        last_opened_at: now(),
-        parked: false,
       });
       writeJsonAtomically(paneMarkerFile, {
         pane_id: movedPane.pane_id,
         terminal_id: requireTerminalId(movedPane),
       });
-      startReaper();
     } finally {
       rmSync(sessionLockDirectory, { recursive: true, force: true });
     }
@@ -469,11 +397,7 @@ function main() {
 }
 
 try {
-  if (process.argv[2] === "--reap") {
-    runReaper();
-  } else {
-    main();
-  }
+  main();
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`split-vim-above: ${message}`);

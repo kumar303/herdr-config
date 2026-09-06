@@ -37,8 +37,8 @@ Vim pane per working directory and workspace. It parks the running pane in an
 inactive Herdr tab, then moves the same pane above the focused pane when
 reopened. The pane takes 80% of the split and leaves unrelated Vim panes alone.
 
-Session metadata lives in `~/.cache/herdr-config-kumar303`. A background reaper
-closes parked panes that the shortcut has not opened for over two hours.
+Session metadata lives in `~/.cache/herdr-config-kumar303` so the shortcut can
+identify its parked panes without touching unrelated Vim panes.
 
 ## Development
 

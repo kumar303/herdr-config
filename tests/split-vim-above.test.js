@@ -98,9 +98,9 @@ describe("split-vim-above", () => {
   it("moves the same Vim process back for the same cwd", () => {
     setPanes([sourcePane({ cwd: "/tmp/project" })]);
 
-    runScript({ now: 1_000 });
-    runScript({ now: 2_000 });
-    runScript({ now: 3_000 });
+    runScript();
+    runScript();
+    runScript();
 
     expect(commandCalls("tab", "create")).toHaveLength(1);
     expect(herdrCommandCalls("run")).toHaveLength(1);
@@ -126,16 +126,16 @@ describe("split-vim-above", () => {
     expect(herdrCommandCalls("run")).toHaveLength(2);
   });
 
-  it("replaces a parked Vim process not opened in over two hours", () => {
+  it("keeps a parked Vim process indefinitely", () => {
     setPanes([sourcePane({ cwd: "/tmp/project" })]);
 
     runScript({ now: 1_000 });
     runScript({ now: 2_000 });
     runScript({ now: 2 * 60 * 60 * 1_000 + 1_001 });
 
-    expect(herdrCommandCalls("close")).toContainEqual(["pane", "close", "w1:p101"]);
-    expect(commandCalls("tab", "create")).toHaveLength(2);
-    expect(herdrCommandCalls("run")).toHaveLength(2);
+    expect(herdrCommandCalls("close")).toHaveLength(0);
+    expect(commandCalls("tab", "create")).toHaveLength(1);
+    expect(herdrCommandCalls("run")).toHaveLength(1);
   });
 
   it("ignores a visible Vim pane in another tab and workspace", () => {
@@ -223,31 +223,6 @@ describe("split-vim-above", () => {
     ]);
     expect(herdrCommandCalls("move")).toHaveLength(3);
   });
-
-  it("starts a background reaper that closes stale parked Vim panes", async () => {
-    setPanes([sourcePane({ cwd: "/tmp/stale" })]);
-    runScript({ now: 1_000 });
-    runScript({ now: 2_000 });
-    addPane(
-      sourcePane({
-        pane_id: "w1:p2",
-        terminal_id: "term_current",
-        cwd: "/tmp/current",
-        tab_id: "w1:t2",
-      }),
-    );
-    clearHerdrCalls();
-
-    runScript({
-      paneId: "w1:p2",
-      now: 2 * 60 * 60 * 1_000 + 1_001,
-      runReaperOnce: true,
-    });
-
-    await expect
-      .poll(() => herdrCommandCalls("close"), { timeout: 2_000 })
-      .toContainEqual(["pane", "close", "w1:p101"]);
-  });
 });
 
 /**
@@ -271,15 +246,8 @@ function setPanes(panes) {
   writeFileSync(panesPath, `${JSON.stringify({ result: { panes } })}\n`);
 }
 
-/** @param {Pane} pane */
-function addPane(pane) {
-  const state = JSON.parse(readFileSync(panesPath, "utf8"));
-  state.result.panes.push(pane);
-  writeFileSync(panesPath, `${JSON.stringify(state)}\n`);
-}
-
 /**
- * @param {{paneId?: string, now?: number, runReaperOnce?: boolean}} [options]
+ * @param {{paneId?: string, now?: number}} [options]
  */
 function runScript(options = {}) {
   const result = spawnSync(scriptPath, {
@@ -289,12 +257,10 @@ function runScript(options = {}) {
       HERDR_ACTIVE_PANE_ID: options.paneId || "w1:p1",
       HERDR_COMMAND: mockHerdrPath,
       HERDR_CONFIG_CACHE_DIR: cacheDirectory,
-      HERDR_DISABLE_REAPER: options.runReaperOnce ? undefined : "1",
       HERDR_MOCK_COUNTER: counterPath,
       HERDR_MOCK_LOG: herdrLogPath,
       HERDR_MOCK_PANES: panesPath,
       HERDR_NOW_MS: String(options.now ?? 1_000),
-      HERDR_REAPER_RUN_ONCE: options.runReaperOnce ? "1" : undefined,
       HOME: testDirectory,
     },
   });
