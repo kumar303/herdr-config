@@ -10,24 +10,34 @@ Personal configuration for [Herdr](https://github.com/ogulcancelik/herdr).
    npx skills add ogulcancelik/herdr
    ```
 
-2. Link the configuration files:
+2. Link the configuration files and reload Herdr:
 
    ```sh
    ./setup.sh
    ```
 
-Run `./setup.sh` again whenever new configuration files or scripts are added.
-Herdr's runtime files remain untouched.
+The setup script prompts before replacing existing files. Run it again when
+this repository adds a configuration file or script. Herdr's runtime files
+remain untouched.
 
-## Vim pane shortcut
+## Keybindings
 
-After running `./setup.sh`, press `prefix+shift+E` to toggle a Vim pane above
-the focused pane using the same working directory. Press it again from the
-same tab to close the Vim pane created by the shortcut. Vim panes opened by
-other means are left untouched.
+| Key                        | Action                                                        |
+| -------------------------- | ------------------------------------------------------------- |
+| `Control+backtick`         | Toggle an 80%-height Vim pane above the focused pane          |
+| `prefix+Shift+E`           | Fallback for the Vim pane toggle                              |
+| `Control+Command+backtick` | Focus the next tab                                            |
+| `Command+Shift+K`          | Close the current tab                                         |
+| `Command+Option+backtick`  | Create and focus a default-named tab in the current directory |
 
-You can also close the new pane directly with:
+The Vim toggle tracks only panes that it creates. It does not close unrelated
+Vim panes.
+
+## Development
 
 ```sh
-herdr pane close <id>
+npm install
+npm test
+npm run typecheck
+npm run format
 ```
